@@ -1,9 +1,9 @@
 {
-  "name": "9router",
-  "version": "0.5.15",
+  "name": "9router-phonex",
+  "version": "0.5.8",
   "description": "9Router CLI - Start and manage 9Router server",
   "bin": {
-    "9router": "./cli.js"
+    "9router-phonex": "./cli.js"
   },
   "files": [
     "cli.js",

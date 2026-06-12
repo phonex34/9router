@@ -69,6 +69,14 @@ function getColorClasses(remainingPercentage) {
   };
 }
 
+function formatAmount(value, unit) {
+  if (unit === "USD") {
+    const n = Number(value) || 0;
+    return `$${n.toFixed(2)}`;
+  }
+  return (Number(value) || 0).toLocaleString();
+}
+
 function sortQuotas(quotas, sortMode) {
   if (sortMode === "remaining-asc") {
     return [...quotas].sort((a, b) => a.remaining - b.remaining || a.name.localeCompare(b.name));
@@ -186,7 +194,7 @@ export default function QuotaTable({
 
                       <div className={`flex items-center justify-between ${compact ? "text-[10px]" : "text-xs"}`}>
                         <span className="text-text-muted">
-                          {quota.used.toLocaleString()} / {quota.total > 0 ? quota.total.toLocaleString() : "∞"}
+                          {formatAmount(quota.used, quota.unit)} / {quota.total > 0 ? formatAmount(quota.total, quota.unit) : "∞"}
                         </span>
                         <span className={`font-medium ${colors.text}`}>
                           {quota.remaining}%

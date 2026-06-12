@@ -23,10 +23,12 @@ export const QUOTA_SORT_OPTIONS = [
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 export function getConnectionLabel(connection) {
-  return connection.name?.trim()
-    || connection.email?.trim()
-    || connection.displayName?.trim()
-    || null;
+  return (
+    connection.name?.trim() ||
+    connection.email?.trim() ||
+    connection.displayName?.trim() ||
+    null
+  );
 }
 
 export function getConnectionQuotaRemaining(connection, quotaData) {
@@ -107,7 +109,11 @@ export function getConnectionsPageRange(pagination) {
   return { start, end };
 }
 
-export function getConnectionsEmptyMessage(totals, providerFilter, accountFilter) {
+export function getConnectionsEmptyMessage(
+  totals,
+  providerFilter,
+  accountFilter,
+) {
   if (!totals.eligibleConnections) {
     return {
       icon: "cloud_off",
@@ -379,11 +385,19 @@ export function parseQuotaData(provider, data) {
         // as "348%". The percentage is computed from used/total instead.
         if (data.quotas) {
           Object.entries(data.quotas).forEach(([quotaType, quota]) => {
-            if (quotaType === "organization" && (!quota || (Number(quota.total) || 0) === 0)) {
+            if (
+              quotaType === "organization" &&
+              (!quota || (Number(quota.total) || 0) === 0)
+            ) {
               return;
             }
             normalizedQuotas.push({
-              name: quotaType === "user" ? "Personal" : quotaType === "organization" ? "Organization" : quotaType,
+              name:
+                quotaType === "user"
+                  ? "Personal"
+                  : quotaType === "organization"
+                    ? "Organization"
+                    : quotaType,
               used: quota.used || 0,
               total: quota.total || 0,
               unit: quota.unit,
@@ -432,7 +446,24 @@ export function parseQuotaData(provider, data) {
           });
         }
         break;
-
+      case "opencode-go":
+        // Go quotas are dollar-denominated ($12 / $30 / $60 limits).
+        // Forward remainingPercentage (authoritative when scraped from
+        // dashboard) and unit so the table renders "$X / $Y" correctly.
+        if (data.quotas) {
+          Object.entries(data.quotas).forEach(([name, quota]) => {
+            normalizedQuotas.push({
+              name,
+              used: quota.used || 0,
+              total: quota.total || 0,
+              recurring: quota.recurring !== false,
+              remainingPercentage: quota.remainingPercentage,
+              unit: quota.unit || "USD",
+              resetAt: quota.resetAt || null,
+            });
+          });
+        }
+        break;
       case "codebuddy-cn":
         // CodeBuddy CN mixes recurring refill packs ("Monthly"/"Weekly"/...)
         // with one-shot bonus packs ("Bonus Pack N"). Forward `recurring`

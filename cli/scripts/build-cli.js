@@ -112,7 +112,11 @@ try {
       USERPROFILE: buildHomeDir,
       APPDATA: path.join(buildHomeDir, "AppData", "Roaming"),
       LOCALAPPDATA: path.join(buildHomeDir, "AppData", "Local"),
-      NEXT_DIST_DIR: buildDistDirName,
+      // #1276: Do NOT set NEXT_DIST_DIR — Next.js output: "standalone" always
+      // writes to .next/standalone regardless of NEXT_DIST_DIR, and the copy
+      // step (3) expects it at .next/standalone/. Setting NEXT_DIST_DIR caused
+      // an empty .next-cli-build/standalone/ dir to be created, which the
+      // fs.existsSync() check picked up, leading to "server.js not found".
       NEXT_TRACING_ROOT_MODE: "workspace",
     }
   });
@@ -130,34 +134,53 @@ if (fs.existsSync(cliAppDir)) {
 console.log("✅ Cleaned\n");
 
 // Step 3: Copy Next.js standalone build to app/cli/app.
-// Newer Next.js standalone output writes server.js/package.json plus .next/, src/, and
-// node_modules/ directly under .next/standalone. Older builds may still use a nested app/.
+// Next standalone layout depends on outputFileTracingRoot:
+//   - root mode:      .next/standalone/{server.js, .next, node_modules, ...}
+//   - workspace mode: .next/standalone/<projectDirName>/{server.js, .next, node_modules, ...}
+//     (projectDirName = basename(appDir), e.g. "9router"). Traced hoisted
+//     node_modules may live at the standalone root in this layout.
 console.log("3️⃣  Copying Next.js standalone build to app/cli/app...");
 const standaloneRoot = path.join(appDir, ".next", "standalone");
 const standaloneRootResolved = path.join(buildDistDir, "standalone");
-let standaloneRootToUse = fs.existsSync(standaloneRootResolved) ? standaloneRootResolved : standaloneRoot;
-// Next.js 16 nests standalone output under the project name when NEXT_TRACING_ROOT_MODE=workspace
-// e.g. .next-cli-build/standalone/9router/server.js
-const pkgName = path.basename(appDir);
-const nestedRoot = path.join(standaloneRootToUse, pkgName);
-if (fs.existsSync(path.join(nestedRoot, "server.js")) && !fs.existsSync(path.join(standaloneRootToUse, "server.js"))) {
-  console.log(`ℹ️  Detected nested standalone output: ${pkgName}/`);
-  standaloneRootToUse = nestedRoot;
+
+// Locate the dir that actually contains server.js.
+function findStandaloneApp(root) {
+  if (!fs.existsSync(root)) return null;
+  // 1. Direct: standalone/server.js
+  if (fs.existsSync(path.join(root, "server.js"))) return root;
+  // 2. Legacy nested: standalone/app/server.js
+  if (fs.existsSync(path.join(root, "app", "server.js"))) return path.join(root, "app");
+  // 3. Workspace mode: standalone/<projectDirName>/server.js
+  const byName = path.join(root, path.basename(appDir));
+  if (fs.existsSync(path.join(byName, "server.js"))) return byName;
+  // 4. Fallback: scan one level deep for any dir containing server.js
+  for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const candidate = path.join(root, entry.name);
+    if (fs.existsSync(path.join(candidate, "server.js"))) return candidate;
+  }
+  return null;
 }
-const standaloneApp = fs.existsSync(path.join(standaloneRootToUse, "server.js"))
-  ? standaloneRootToUse
-  : path.join(standaloneRootToUse, "app");
-if (!fs.existsSync(standaloneApp)) {
+
+// Prefer the resolved build dist root (.next-cli-build/standalone) when present,
+// otherwise fall back to the default .next/standalone.
+const standaloneApp =
+  findStandaloneApp(standaloneRootResolved) || findStandaloneApp(standaloneRoot);
+if (!standaloneApp) {
   console.error("❌ Next.js standalone build not found under .next/standalone");
-  console.error("Expected either .next/standalone/server.js or .next/standalone/app/");
+  console.error("Expected server.js at .next/standalone/, .next/standalone/app/, or .next/standalone/<projectDir>/");
   process.exit(1);
 }
+console.log(`   Found standalone app at: ${path.relative(appDir, standaloneApp)}`);
 copyRecursive(standaloneApp, cliAppDir);
 
-// Older nested-app layout stores traced node_modules at standalone root.
-const standaloneNodeModules = path.join(standaloneRootToUse, "node_modules");
-if (standaloneApp !== standaloneRootToUse && fs.existsSync(standaloneNodeModules)) {
-  copyRecursive(standaloneNodeModules, path.join(cliAppDir, "node_modules"));
+// Copy node_modules: prefer the app dir's own, else the hoisted set at the
+// standalone root (workspace tracing puts hoisted deps one level up).
+if (!fs.existsSync(path.join(cliAppDir, "node_modules"))) {
+  const rootNodeModules = path.join(standaloneRoot, "node_modules");
+  if (fs.existsSync(rootNodeModules)) {
+    copyRecursive(rootNodeModules, path.join(cliAppDir, "node_modules"));
+  }
 }
 console.log("✅ Copied standalone build\n");
 
@@ -202,11 +225,13 @@ if (fs.existsSync(betterDir)) {
 }
 console.log("");
 
-// Step 4: Copy static files
+// Step 4: Copy static files.
+// Next standalone server.js reads assets from <cwd>/.next/static, so the dest
+// MUST be .next/ (not the build-time NEXT_DIST_DIR name).
 console.log("4️⃣  Copying static files...");
 const staticSrc = path.join(appDir, ".next", "static");
 const staticSrcResolved = path.join(buildDistDir, "static");
-const staticDest = path.join(cliAppDir, buildDistDirName, "static");
+const staticDest = path.join(cliAppDir, ".next", "static");
 if (fs.existsSync(staticSrcResolved) || fs.existsSync(staticSrc)) {
   copyRecursive(fs.existsSync(staticSrcResolved) ? staticSrcResolved : staticSrc, staticDest);
   console.log("✅ Copied static files\n");
@@ -229,7 +254,7 @@ if (fs.existsSync(publicSrc)) {
 console.log("6️⃣  Copying vendor-chunks...");
 const vendorChunksSrc = path.join(appDir, ".next", "server", "vendor-chunks");
 const vendorChunksSrcResolved = path.join(buildDistDir, "server", "vendor-chunks");
-const vendorChunksDest = path.join(cliAppDir, buildDistDirName, "server", "vendor-chunks");
+const vendorChunksDest = path.join(cliAppDir, ".next", "server", "vendor-chunks");
 if (fs.existsSync(vendorChunksSrcResolved) || fs.existsSync(vendorChunksSrc)) {
   copyRecursive(fs.existsSync(vendorChunksSrcResolved) ? vendorChunksSrcResolved : vendorChunksSrc, vendorChunksDest);
   console.log("✅ Copied vendor-chunks\n");

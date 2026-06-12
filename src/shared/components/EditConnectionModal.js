@@ -21,6 +21,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
     organization: "",
   });
   const [cloudflareData, setCloudflareData] = useState({ accountId: "" });
+  const [goData, setGoData] = useState({ workspaceId: "", authCookie: "" });
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [validating, setValidating] = useState(false);
@@ -46,6 +47,12 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (connection.provider === "cloudflare-ai" && connection.providerSpecificData) {
         setCloudflareData({ accountId: connection.providerSpecificData.accountId || "" });
       }
+      if (connection.provider === "opencode-go") {
+        setGoData({
+          workspaceId: connection.providerSpecificData?.workspaceId || "",
+          authCookie: "",
+        });
+      }
       setTestResult(null);
       setValidationResult(null);
     }
@@ -54,6 +61,7 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
   const isOAuth = connection?.authType === "oauth";
   const isAzure = connection?.provider === "azure";
   const isCloudflareAi = connection?.provider === "cloudflare-ai";
+  const isOpenCodeGo = connection?.provider === "opencode-go";
   const isCompatible = connection
     ? (isOpenAICompatibleProvider(connection.provider) || isAnthropicCompatibleProvider(connection.provider))
     : false;
@@ -150,6 +158,21 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
       if (isCloudflareAi) {
         updates.providerSpecificData = { accountId: cloudflareData.accountId };
       }
+      if (isOpenCodeGo) {
+        // Merge with existing providerSpecificData to preserve other fields (e.g. goMonthlyAnchor).
+        // Only overwrite authCookie when the user typed a new value, so the saved
+        // cookie isn't wiped on edit (the client API never returns it).
+        const psd = {
+          ...(connection.providerSpecificData || {}),
+          workspaceId: goData.workspaceId.trim(),
+        };
+        if (goData.authCookie.trim()) {
+          psd.authCookie = goData.authCookie.trim();
+        }
+        // hasAuthCookie is a UI-only flag from the client API; don't persist it
+        delete psd.hasAuthCookie;
+        updates.providerSpecificData = psd;
+      }
       
       await onSave(updates);
     } finally {
@@ -238,6 +261,38 @@ export default function EditConnectionModal({ isOpen, connection, proxyPools, on
                 onChange={(e) => setAzureData({ ...azureData, organization: e.target.value })}
                 placeholder="Organization ID"
                 hint="Required for billing"
+              />
+            </div>
+          </div>
+        )}
+
+        {isOpenCodeGo && (
+          <div className="bg-sidebar/50 p-4 rounded-lg border border-accent/20">
+            <h3 className="font-semibold mb-1 text-sm">OpenCode Go Quota Tracking</h3>
+            <p className="text-xs text-text-muted mb-3">
+              Optional. Add your workspace ID and dashboard auth cookie to show
+              exact usage from the official Go dashboard. Leave blank to use a
+              local 9Router usage estimate instead.
+            </p>
+            <div className="flex flex-col gap-3">
+              <Input
+                label="Workspace ID"
+                value={goData.workspaceId}
+                onChange={(e) => setGoData({ ...goData, workspaceId: e.target.value })}
+                placeholder="wrk_01XXXXXXXXXXXXXXXXXXXXXXXX"
+                hint="From the dashboard URL: opencode.ai/workspace/<id>/go"
+              />
+              <Input
+                label="Auth Cookie"
+                type="password"
+                value={goData.authCookie}
+                onChange={(e) => setGoData({ ...goData, authCookie: e.target.value })}
+                placeholder={
+                  connection.providerSpecificData?.hasAuthCookie
+                    ? "Saved — leave blank to keep current cookie"
+                    : "Value of the 'auth' cookie on opencode.ai"
+                }
+                hint="DevTools → Application → Cookies → opencode.ai → auth"
               />
             </div>
           </div>

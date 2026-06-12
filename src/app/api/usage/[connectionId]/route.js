@@ -6,6 +6,7 @@ import { getUsageForProvider } from "open-sse/services/usage.js";
 import { getExecutor } from "open-sse/executors/index.js";
 import { resolveConnectionProxyConfig } from "@/lib/network/connectionProxy";
 import { USAGE_APIKEY_PROVIDERS } from "@/shared/constants/providers";
+import { getOpenCodeGoUsage } from "@/lib/usage/goQuota.js";
 
 // Detect auth-expired messages returned by usage providers instead of throwing
 const AUTH_EXPIRED_PATTERNS = ["expired", "authentication", "unauthorized", "401", "re-authorize"];
@@ -165,6 +166,12 @@ export async function GET(request, { params }) {
           error: `Credential refresh failed: ${refreshError.message}`
         }, { status: 401 });
       }
+    }
+
+    // OpenCode Go: scrape official dashboard (accurate), fall back to local DB estimate
+    if (connection.provider === "opencode-go") {
+      const usage = await getOpenCodeGoUsage(connection.providerSpecificData, proxyOptions);
+      return Response.json(usage);
     }
 
     // Fetch usage from provider API
