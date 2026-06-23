@@ -17,6 +17,17 @@ const CUSTOM_EMBEDDING_DEFAULTS = {
   baseUrl: "https://api.openai.com/v1",
 };
 
+function generatePrefix(name, prefix) {
+  const explicitPrefix = typeof prefix === "string" ? prefix.trim() : "";
+  if (explicitPrefix) return explicitPrefix;
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || generateId();
+}
+
 // GET /api/provider-nodes - List all provider nodes
 export async function GET() {
   try {
@@ -38,9 +49,7 @@ export async function POST(request) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    if (!prefix?.trim()) {
-      return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
-    }
+    const resolvedPrefix = generatePrefix(name, prefix);
 
     // Determine type
     const nodeType = type || "openai-compatible";
@@ -53,7 +62,7 @@ export async function POST(request) {
       const node = await createProviderNode({
         id: `${OPENAI_COMPATIBLE_PREFIX}${apiType}-${generateId()}`,
         type: "openai-compatible",
-        prefix: prefix.trim(),
+        prefix: resolvedPrefix,
         apiType,
         baseUrl: (baseUrl || OPENAI_COMPATIBLE_DEFAULTS.baseUrl).trim(),
         name: name.trim(),
@@ -71,7 +80,7 @@ export async function POST(request) {
       const node = await createProviderNode({
         id: `${CUSTOM_EMBEDDING_PREFIX}${generateId()}`,
         type: "custom-embedding",
-        prefix: prefix.trim(),
+        prefix: resolvedPrefix,
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
       });
@@ -89,7 +98,7 @@ export async function POST(request) {
       const node = await createProviderNode({
         id: `${ANTHROPIC_COMPATIBLE_PREFIX}${generateId()}`,
         type: "anthropic-compatible",
-        prefix: prefix.trim(),
+        prefix: resolvedPrefix,
         baseUrl: sanitizedBaseUrl,
         name: name.trim(),
       });

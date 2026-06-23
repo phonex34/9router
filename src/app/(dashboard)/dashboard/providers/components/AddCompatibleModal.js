@@ -62,7 +62,7 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
   }, [config.hasApiType ? formData.apiType : isOpen]);
 
   const handleSubmit = async () => {
-    if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
+    if (!formData.name.trim() || !formData.baseUrl.trim()) return;
     setSubmitting(true);
     try {
       const res = await fetch("/api/provider-nodes", {
@@ -144,11 +144,11 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
           hint="Required. A friendly label for this node."
         />
         <Input
-          label="Prefix"
+          label="Prefix (optional)"
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={config.prefixPlaceholder}
-          hint="Required. Used as the provider prefix for model IDs."
+          hint="Optional. If empty, a prefix is generated from the provider name."
         />
         {config.hasApiType && (
           <Select
@@ -195,7 +195,6 @@ function AddCompatibleModal({ variant, isOpen, onClose, onCreated }) {
             fullWidth
             disabled={
               !formData.name.trim() ||
-              !formData.prefix.trim() ||
               !formData.baseUrl.trim() ||
               submitting
             }

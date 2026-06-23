@@ -34,7 +34,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
   ];
 
   const handleSubmit = async () => {
-    if (!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim()) return;
+    if (!formData.name.trim() || !formData.baseUrl.trim()) return;
     setSaving(true);
     try {
       const payload = {
@@ -86,11 +86,11 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           hint="Required. A friendly label for this node."
         />
         <Input
-          label="Prefix"
+          label="Prefix (optional)"
           value={formData.prefix}
           onChange={(e) => setFormData({ ...formData, prefix: e.target.value })}
           placeholder={isAnthropic ? "ac-prod" : "oc-prod"}
-          hint="Required. Used as the provider prefix for model IDs."
+          hint="Optional. If empty, a prefix is generated from the provider name."
         />
         {!isAnthropic && (
           <Select
@@ -134,7 +134,7 @@ export default function EditCompatibleNodeModal({ isOpen, node, onSave, onClose,
           </Badge>
         )}
         <div className="flex gap-2">
-          <Button onClick={handleSubmit} fullWidth disabled={!formData.name.trim() || !formData.prefix.trim() || !formData.baseUrl.trim() || saving}>
+          <Button onClick={handleSubmit} fullWidth disabled={!formData.name.trim() || !formData.baseUrl.trim() || saving}>
             {saving ? "Saving..." : "Save"}
           </Button>
           <Button onClick={onClose} variant="ghost" fullWidth>

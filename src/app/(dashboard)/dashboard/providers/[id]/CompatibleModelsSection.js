@@ -85,7 +85,7 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
       const res = await fetch("/api/models/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: `${providerStorageAlias}/${modelId}` }),
+        body: JSON.stringify({ model: `${providerDisplayAlias}/${modelId}` }),
       });
       const data = await res.json();
       setModelTestResults((prev) => ({ ...prev, [modelId]: data.ok ? "ok" : "error" }));
@@ -105,7 +105,15 @@ export default function CompatibleModelsSection({ providerStorageAlias, provider
 
   const handleAdd = async () => {
     if (!newModel.trim() || adding) return;
-    const modelId = newModel.trim();
+    // Strip accidental prefix (e.g. user types "cc/model-id" but should type just "model-id")
+    const prefix = `${providerDisplayAlias}/`;
+    const modelId = newModel.trim().startsWith(prefix)
+      ? newModel.trim().slice(prefix.length)
+      : newModel.trim();
+    if (!modelId) {
+      alert("Model ID cannot be empty after stripping prefix.");
+      return;
+    }
     if (allModels.some((model) => model.id === modelId)) {
       alert("Model already exists for this provider.");
       return;

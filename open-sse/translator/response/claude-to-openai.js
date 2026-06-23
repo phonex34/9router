@@ -23,6 +23,16 @@ export function claudeToOpenAIResponse(chunk, state) {
   const event = chunk.type;
 
   switch (event) {
+    case "error": {
+      state.messageId ||= `msg_${Date.now()}`;
+      state.model ||= state.model || "unknown";
+      const message = chunk.error?.message || "Provider returned an error";
+      results.push(createChunk(state, { role: ROLE.ASSISTANT }));
+      results.push(createChunk(state, { content: `[Provider error] ${message}` }, OPENAI_FINISH.STOP));
+      state.finishReasonSent = true;
+      break;
+    }
+
     case "message_start": {
       state.messageId = chunk.message?.id || `msg_${Date.now()}`;
       state.model = chunk.message?.model;

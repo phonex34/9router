@@ -1,5 +1,17 @@
 import { NextResponse } from "next/server";
 import { deleteProviderConnectionsByProvider, deleteProviderNode, getProviderConnections, getProviderNodeById, updateProviderConnection, updateProviderNode } from "@/models";
+import { generateId } from "@/shared/utils";
+
+function generatePrefix(name, prefix) {
+  const explicitPrefix = typeof prefix === "string" ? prefix.trim() : "";
+  if (explicitPrefix) return explicitPrefix;
+  const slug = name
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "");
+  return slug || generateId();
+}
 
 // PUT /api/provider-nodes/[id] - Update provider node
 export async function PUT(request, { params }) {
@@ -17,9 +29,7 @@ export async function PUT(request, { params }) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
-    if (!prefix?.trim()) {
-      return NextResponse.json({ error: "Prefix is required" }, { status: 400 });
-    }
+    const resolvedPrefix = generatePrefix(name, prefix);
 
     // Only validate apiType for OpenAI Compatible nodes
     if (node.type === "openai-compatible" && (!apiType || !["chat", "responses"].includes(apiType))) {
@@ -50,7 +60,7 @@ export async function PUT(request, { params }) {
 
     const updates = {
       name: name.trim(),
-      prefix: prefix.trim(),
+      prefix: resolvedPrefix,
       baseUrl: sanitizedBaseUrl,
     };
 
@@ -65,7 +75,7 @@ export async function PUT(request, { params }) {
       updateProviderConnection(connection.id, {
         providerSpecificData: {
           ...(connection.providerSpecificData || {}),
-          prefix: prefix.trim(),
+          prefix: resolvedPrefix,
           apiType: node.type === "openai-compatible" ? apiType : undefined,
           baseUrl: sanitizedBaseUrl,
           nodeName: updated.name,
