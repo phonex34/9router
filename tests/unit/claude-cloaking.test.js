@@ -6,7 +6,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { cloakClaudeTools } from "../../open-sse/utils/claudeCloaking.js";
+import { cloakClaudeTools, applyCloaking } from "../../open-sse/utils/claudeCloaking.js";
 import { CLAUDE_TOOL_SUFFIX } from "../../open-sse/config/appConstants.js";
 
 describe("cloakClaudeTools", () => {
@@ -72,5 +72,35 @@ describe("cloakClaudeTools", () => {
     const { body, toolNameMap } = cloakClaudeTools(input);
     expect(body).toBe(input);
     expect(toolNameMap).toBeNull();
+  });
+});
+
+// The billing header sits at system[0]; Anthropic prompt cache invalidates the whole
+// prefix if any byte changes, so it MUST be identical across turns of a conversation.
+describe("applyCloaking billing header is byte-stable (prompt-cache safe)", () => {
+  const OAT = "sk-ant-oat01-abc";
+  const mk = (userText) => applyCloaking(
+    { system: [{ type: "text", text: "static system" }], messages: [{ role: "user", content: userText }] },
+    OAT, "sess-1"
+  );
+
+  it("system[0] billing block is identical across different payloads", () => {
+    const t1 = mk("turn one short");
+    const t2 = mk("turn two is a completely different and much longer message body");
+    expect(t1.system[0].text).toBe(t2.system[0].text);
+    expect(t1.system[0].text).toContain("x-anthropic-billing-header:");
+    expect(t1.system[0].text).toContain("cch=00000");
+  });
+
+  it("contains no random build hash (cc_version build is constant)", () => {
+    const a = mk("a").system[0].text;
+    const b = mk("b").system[0].text;
+    const ver = (s) => s.match(/cc_version=([\d.]+)/)?.[1];
+    expect(ver(a)).toBe(ver(b));
+  });
+
+  it("does not cloak when apiKey is not an OAuth token", () => {
+    const out = applyCloaking({ system: [{ type: "text", text: "s" }] }, "sk-plain-key", "sess-1");
+    expect(out.system[0].text).toBe("s");
   });
 });

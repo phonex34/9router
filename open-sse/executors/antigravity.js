@@ -116,7 +116,7 @@ export class AntigravityExecutor extends BaseExecutor {
   }
 
   transformRequest(model, body, stream, credentials) {
-    const projectId = credentials?.projectId || this.generateProjectId();
+    const projectId = credentials?.projectId || this.generateProjectId(credentials?.email || credentials?.connectionId);
 
     // ─── Image generation: completely different request structure ───
     if (isImageModel(model)) {
@@ -138,6 +138,7 @@ export class AntigravityExecutor extends BaseExecutor {
         headers: credentials?.rawHeaders,
         body,
         connectionId: credentials?.email || credentials?.connectionId,
+        apiKey: credentials?.apiKey,
         scope: "antigravity",
       });
 
@@ -232,7 +233,7 @@ export class AntigravityExecutor extends BaseExecutor {
       generationConfig,
       ...(contents && { contents }),
       ...(tools && { tools }),
-      sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, scope: "antigravity" }),
+      sessionId: body.request?.sessionId || resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.email || credentials?.connectionId, apiKey: credentials?.apiKey, scope: "antigravity" }),
       safetySettings: undefined,
       ...(tools?.length > 0 && { toolConfig: { functionCallingConfig: { mode: "VALIDATED" } } })
     };
@@ -285,9 +286,15 @@ export class AntigravityExecutor extends BaseExecutor {
     }
   }
 
-  generateProjectId() {
-    const adj = ["useful", "bright", "swift", "calm", "bold"][Math.floor(Math.random() * 5)];
-    const noun = ["fuze", "wave", "spark", "flow", "core"][Math.floor(Math.random() * 5)];
+  generateProjectId(seed = null) {
+    const adjs = ["useful", "bright", "swift", "calm", "bold"];
+    const nouns = ["fuze", "wave", "spark", "flow", "core"];
+    if (seed) {
+      const h = crypto.createHash("sha256").update(String(seed)).digest("hex");
+      return `${adjs[parseInt(h.slice(0, 4), 16) % 5]}-${nouns[parseInt(h.slice(4, 8), 16) % 5]}-${h.slice(8, 13)}`;
+    }
+    const adj = adjs[Math.floor(Math.random() * 5)];
+    const noun = nouns[Math.floor(Math.random() * 5)];
     return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;
   }
 

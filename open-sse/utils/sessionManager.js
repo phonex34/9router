@@ -82,14 +82,20 @@ export function clearSessionStore() {
     assistantSessionStore.clear();
 }
 
-// Conversation-stable session store: Key = hash(scope+assistant text), Value = { sessionId, lastUsed }
+// Conversation-stable session store: Key = hash(scope+first user text), Value = { sessionId, lastUsed }
 const assistantSessionStore = new Map();
-const ASSISTANT_MIN_LEN = 50;
-const ASSISTANT_CAP_LEN = 50;
 const MAX_ASSISTANT_SESSIONS = 5000;
 
-// Client headers/body fields that carry an upstream session id (priority order)
-const SESSION_HEADER_KEYS = ["x-session-id", "session-id", "session_id", "x-amp-thread-id", "x-client-request-id"];
+// Per-conversation session-id headers per client (verbatim header names from each
+// client's source). OpenCode: x-session-affinity/x-session-id/x-opencode-session.
+// Claude Code: x-claude-code-session-id. Codex CLI: session-id/thread-id/x-codex-window-id.
+const SESSION_HEADER_KEYS = [
+    "x-session-id", "session-id", "session_id",
+    "x-opencode-session", "x-session-affinity", "x-parent-session-id",
+    "x-claude-code-session-id",
+    "thread-id", "x-codex-window-id",
+    "x-amp-thread-id", "x-client-request-id",
+];
 const CLAUDE_CODE_SESSION_RE = /_session_([a-f0-9-]+)$/;
 
 function sha16(text) {
@@ -148,28 +154,31 @@ function extractClientSessionId(headers, body) {
     return fromBody || null;
 }
 
-// Accumulate assistant text from OpenAI/Responses-style input/messages (cap-limited)
-function accumulateAssistantText(body) {
+// First user turn text — stable anchor that survives history growth/compaction
+// (unlike assistant text, empty on turn 1). Reads only the FIRST user message.
+function accumulateFirstUserText(body) {
     const items = Array.isArray(body?.input) ? body.input
         : Array.isArray(body?.messages) ? body.messages : null;
     if (!items) return "";
-    let text = "";
     for (const item of items) {
-        if (item?.role !== "assistant") continue;
-        if (typeof item.content === "string") text += item.content;
-        else if (Array.isArray(item.content)) {
+        if (item?.role !== "user") continue;
+        if (typeof item.content === "string") return item.content;
+        if (Array.isArray(item.content)) {
+            let text = "";
             for (const c of item.content) text += c?.text || c?.output || "";
+            return text;
         }
-        if (text.length >= ASSISTANT_CAP_LEN) break;
     }
-    return text;
+    return "";
 }
 
-// Stable session id keyed on accumulated assistant text (avoids collision on identical first user prompt)
-function assistantTextSessionId(scope, body) {
-    const text = accumulateAssistantText(body);
-    if (text.length < ASSISTANT_MIN_LEN) return null;
-    const hash = sha16(`${scope}:${text.slice(0, ASSISTANT_CAP_LEN)}`);
+const FIRST_USER_MIN_LEN = 16;
+
+// Stable session id anchored on the first user message (survives compaction).
+function firstUserTextSessionId(scope, body) {
+    const text = accumulateFirstUserText(body);
+    if (text.length < FIRST_USER_MIN_LEN) return null;
+    const hash = sha16(`${scope}:${text}`);
     const existing = assistantSessionStore.get(hash);
     if (existing) {
         existing.lastUsed = Date.now();
@@ -183,9 +192,29 @@ function assistantTextSessionId(scope, body) {
     return sessionId;
 }
 
+// Deterministic UUIDv5 per (scope, apiKey) — content-blind, stable across restarts.
+// Mirrors CLIProxyAPI's uuid.NewSHA1(NameSpaceOID, ...): SHA1 of namespace bytes + name,
+// with RFC-4122 version(5)/variant bits set. Cache anchor when no session header is sent.
+const UUID_NAMESPACE_OID = "6ba7b812-9dad-11d1-80b4-00c04fd430c8";
+function stableApiKeyId(scope, apiKey) {
+    const key = normalizeSessionId(apiKey);
+    if (!key) return null;
+    const ns = Buffer.from(UUID_NAMESPACE_OID.replace(/-/g, ""), "hex");
+    const h = crypto.createHash("sha1").update(ns).update(`${scope}:${key}`).digest();
+    h[6] = (h[6] & 0x0f) | 0x50;
+    h[8] = (h[8] & 0x3f) | 0x80;
+    const hex = h.subarray(0, 16).toString("hex");
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20, 32)}`;
+}
+
 /**
  * Resolve a conversation-stable session id (generalizes Codex resolveCacheSessionId).
  * Priority: client session → accumulated-assistant-text hash → workspaceId → per-connection.
+ *
+ * Precedence (most stable first): client session header/body → first-user prefix anchor
+ * → deterministic per-(scope,apiKey) UUID → workspaceId → per-connection id. Every source
+ * is either client-provided or content-blind except the first-user anchor, which is chosen
+ * over assistant text because it exists on turn 1 and survives history compaction.
  *
  * @param {object} opts
  * @param {object} [opts.headers] - Raw client request headers (lowercase keys)
@@ -193,13 +222,16 @@ function assistantTextSessionId(scope, body) {
  * @param {string} [opts.connectionId] - Connection identifier (fallback scope)
  * @param {string} [opts.workspaceId] - Provider workspace id (account-wide fallback)
  * @param {string} [opts.scope] - Provider scope to isolate cache keys across providers
+ * @param {string} [opts.apiKey] - Client API key for deterministic content-blind fallback
  * @returns {string} A stable session id
  */
-export function resolveSessionId({ headers, body, connectionId, workspaceId, scope = "" } = {}) {
+export function resolveSessionId({ headers, body, connectionId, workspaceId, scope = "", apiKey = null } = {}) {
     const client = extractClientSessionId(headers, body);
     if (client) return client;
-    const fromAssistant = assistantTextSessionId(`${scope}:${connectionId || ""}`, body);
-    if (fromAssistant) return fromAssistant;
+    const fromFirstUser = firstUserTextSessionId(`${scope}:${connectionId || ""}`, body);
+    if (fromFirstUser) return fromFirstUser;
+    const fromApiKey = stableApiKeyId(scope, apiKey);
+    if (fromApiKey) return fromApiKey;
     const ws = normalizeSessionId(workspaceId);
     if (ws) return ws;
     return deriveSessionId(connectionId);
@@ -207,7 +239,7 @@ export function resolveSessionId({ headers, body, connectionId, workspaceId, sco
 
 // Capture session id from request body + credentials (envelope still intact here)
 export function captureSessionId(body, credentials, connectionId, scope = "") {
-    return resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId, scope });
+    return resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId, scope, apiKey: credentials?.apiKey });
 }
 
 // Convert any session id to Antigravity numeric format "-<int64>" (matches real AG / CLIProxyAPI).

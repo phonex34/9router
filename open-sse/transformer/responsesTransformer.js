@@ -73,7 +73,8 @@ export function createResponsesApiTransformStream(logger = null) {
     funcArgsDone: {},
     funcItemDone: {},
     buffer: "",
-    completedSent: false
+    completedSent: false,
+    usage: null
   };
 
   const encoder = new TextEncoder();
@@ -233,7 +234,8 @@ export function createResponsesApiTransformStream(logger = null) {
           created_at: state.created,
           status: "completed",
           background: false,
-          error: null
+          error: null,
+          ...(state.usage && { usage: state.usage })
         }
       });
     }
@@ -263,6 +265,10 @@ export function createResponsesApiTransformStream(logger = null) {
         } catch {
           continue;
         }
+
+        // Usage arrives on a trailing chunk that often has empty choices — capture it
+        // before the choices guard so cached_tokens reaches response.completed.
+        if (parsed.usage && typeof parsed.usage === "object") state.usage = parsed.usage;
 
         if (!parsed.choices?.length) continue;
         

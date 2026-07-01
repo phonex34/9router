@@ -3,6 +3,7 @@
 // but the default filterToOpenAIFormat strips them. preserveCacheControl quirk opts-in.
 import { describe, it, expect } from "vitest";
 import { filterToOpenAIFormat } from "../../open-sse/translator/formats/openai.js";
+import { PROVIDERS } from "../../open-sse/config/providers.js";
 
 const msgWithCache = [
   {
@@ -62,5 +63,22 @@ describe("filterToOpenAIFormat cache_control handling (#2069)", () => {
     };
     filterToOpenAIFormat(body, { preserveCacheControl: true });
     expect(body.messages[0].content[0].cache_control).toBeUndefined();
+  });
+});
+
+// Only providers that actually process cache_control markers should opt in. Implicit-cache
+// providers (glm/kimi/deepseek...) 400 or ignore the field, so they must NOT set the quirk.
+describe("preserveCacheControl quirk is enabled only where safe", () => {
+  it("openrouter opts in (passes cache_control through to Anthropic/Kimi/Gemini)", () => {
+    expect(PROVIDERS.openrouter?.quirks?.preserveCacheControl).toBe(true);
+  });
+
+  it("alicode/DashScope opts in (explicit cache_control support)", () => {
+    expect(PROVIDERS.alicode?.quirks?.preserveCacheControl).toBe(true);
+  });
+
+  it("providers that 400 on cache_control stay OFF (glm, xai)", () => {
+    expect(PROVIDERS.glm?.quirks?.preserveCacheControl).toBeFalsy();
+    expect(PROVIDERS.xai?.quirks?.preserveCacheControl).toBeFalsy();
   });
 });

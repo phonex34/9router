@@ -105,13 +105,14 @@ function normalizeCodexTools(body) {
   }
 }
 
-// Resolve prompt-cache session id: client session → assistant-text-hash → workspaceId → connection
+// Resolve prompt-cache session id: client session → first-user prefix → apiKey uuid → workspaceId → connection
 function resolveCacheSessionId(body, credentials) {
   return resolveSessionId({
     headers: credentials?.rawHeaders,
     body,
     connectionId: credentials?.connectionId,
     workspaceId: credentials?.providerSpecificData?.workspaceId,
+    apiKey: credentials?.apiKey,
     scope: "codex"
   });
 }

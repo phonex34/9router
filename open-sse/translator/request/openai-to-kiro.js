@@ -555,7 +555,7 @@ export function openaiToKiroRequest(model, body, stream, credentials) {
   const payload = {
     conversationState: {
       chatTriggerType: "MANUAL",
-      conversationId: resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, scope: "kiro" }),
+      conversationId: resolveSessionId({ headers: credentials?.rawHeaders, body, connectionId: credentials?.connectionId, apiKey: credentials?.apiKey, scope: "kiro" }),
       currentMessage: {
         userInputMessage: {
           content: finalContent,

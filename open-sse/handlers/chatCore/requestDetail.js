@@ -84,11 +84,19 @@ export function saveUsageStats({ provider, model, tokens, connectionId, apiKey, 
   const accountSuffix = connectionId ? ` | account=${connectionId.slice(0, 8)}...` : "";
   console.log(`${COLORS.green}[${time}] 📊 [${label}] ${provider.toUpperCase()} | in=${inTokens} | out=${outTokens}${accountSuffix}${COLORS.reset}`);
 
-  // Normalize to OpenAI token shape for storage
+  // Normalize to OpenAI token shape for storage. Preserve cache tokens (OpenAI
+  // prompt_tokens_details or raw Claude fields) so the dashboard reports cache reads.
+  const cachedTokens = tokens.prompt_tokens_details?.cached_tokens ?? tokens.cache_read_input_tokens ?? 0;
+  const cacheCreationTokens = tokens.prompt_tokens_details?.cache_creation_tokens ?? tokens.cache_creation_input_tokens ?? 0;
   const normalized = {
     prompt_tokens: tokens.prompt_tokens ?? tokens.input_tokens ?? 0,
     completion_tokens: tokens.completion_tokens ?? tokens.output_tokens ?? 0
   };
+  if (cachedTokens > 0 || cacheCreationTokens > 0) {
+    normalized.prompt_tokens_details = {};
+    if (cachedTokens > 0) normalized.prompt_tokens_details.cached_tokens = cachedTokens;
+    if (cacheCreationTokens > 0) normalized.prompt_tokens_details.cache_creation_tokens = cacheCreationTokens;
+  }
 
   saveRequestUsage({
     provider: provider || "unknown",

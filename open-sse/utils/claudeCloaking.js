@@ -4,13 +4,14 @@ import { CLAUDE_TOOL_SUFFIX, CC_DEFAULT_TOOLS } from "../config/appConstants.js"
 const CLAUDE_VERSION = "2.1.92";
 const CC_ENTRYPOINT = "sdk-cli";
 
-// Generate billing header matching real Claude Code 2.1.92+ format:
-// x-anthropic-billing-header: cc_version=<ver>.<build>; cc_entrypoint=sdk-cli; cch=<hash>;
-function generateBillingHeader(payload) {
-  const content = JSON.stringify(payload);
-  const cch = createHash("sha256").update(content).digest("hex").slice(0, 5);
-  const buildHash = randomBytes(2).toString("hex").slice(0, 3);
-  return `x-anthropic-billing-header: cc_version=${CLAUDE_VERSION}.${buildHash}; cc_entrypoint=${CC_ENTRYPOINT}; cch=${cch};`;
+// Billing header matching real Claude Code 2.1.92+ format. Must be BYTE-STABLE across
+// turns: it lives at system[0], and Anthropic prompt cache invalidates the whole prefix
+// if any byte changes. Real Claude Code's random build + per-payload cch is what
+// api.anthropic.com strips internally; a proxy forwards it, so a fixed build + zeroed
+// cch (the value the CLIENT emits under CLAUDE_CODE_ATTRIBUTION_HEADER=0) keeps cache warm.
+const CLAUDE_BUILD = "000";
+function generateBillingHeader() {
+  return `x-anthropic-billing-header: cc_version=${CLAUDE_VERSION}.${CLAUDE_BUILD}; cc_entrypoint=${CC_ENTRYPOINT}; cch=00000;`;
 }
 
 // Derive a deterministic UUID-v4-shaped string from a seed (stable per account)
@@ -141,7 +142,7 @@ export function applyCloaking(body, apiKey, sessionId) {
   const result = { ...body };
 
   // Inject billing header as system[0], preserve existing system blocks
-  const billingText = generateBillingHeader(body);
+  const billingText = generateBillingHeader();
   const billingBlock = { type: "text", text: billingText };
 
   if (Array.isArray(result.system)) {

@@ -1,5 +1,6 @@
 // Gemini helper functions for translator
 
+import { createHash } from "node:crypto";
 import { safeParseJSON } from "../concerns/json.js";
 import { OPENAI_BLOCK } from "../schema/index.js";
 
@@ -118,10 +119,18 @@ export function generateSessionId() {
   return crypto.randomUUID() + Date.now().toString();
 }
 
-// Generate project ID
-export function generateProjectId() {
+// Generate project ID. With a seed (account email/connectionId) it is DETERMINISTIC so
+// the same account always maps to the same synthetic project — a per-request random id
+// would land in the Cloud Code envelope.project and break session/cache continuity.
+export function generateProjectId(seed = null) {
   const adjectives = ["useful", "bright", "swift", "calm", "bold"];
   const nouns = ["fuze", "wave", "spark", "flow", "core"];
+  if (seed) {
+    const h = createHash("sha256").update(String(seed)).digest("hex");
+    const adj = adjectives[parseInt(h.slice(0, 4), 16) % adjectives.length];
+    const noun = nouns[parseInt(h.slice(4, 8), 16) % nouns.length];
+    return `${adj}-${noun}-${h.slice(8, 13)}`;
+  }
   const adj = adjectives[Math.floor(Math.random() * adjectives.length)];
   const noun = nouns[Math.floor(Math.random() * nouns.length)];
   return `${adj}-${noun}-${crypto.randomUUID().slice(0, 5)}`;

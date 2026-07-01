@@ -1,5 +1,5 @@
 // Codex (ChatGPT Plus/Pro) image generation via Responses API + SSE
-import { randomUUID } from "node:crypto";
+import { randomUUID, createHash } from "node:crypto";
 import { nowSec } from "./_base.js";
 import { PROVIDERS } from "../../config/providers.js";
 
@@ -178,7 +178,7 @@ export default {
       tools: [imgTool],
       tool_choice: "auto",
       parallel_tool_calls: false,
-      prompt_cache_key: randomUUID(),
+      prompt_cache_key: createHash("sha256").update(`${stripImageSuffix(model)}:${body.prompt || ""}:${body.size || ""}:${body.quality || ""}`).digest("hex").slice(0, 32),
       stream: true,
       store: false,
       reasoning: null,

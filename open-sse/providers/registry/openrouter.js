@@ -22,6 +22,7 @@ export default {
       "HTTP-Referer": "https://endpoint-proxy.local",
       "X-Title": "Endpoint Proxy",
     },
+    quirks: { preserveCacheControl: true },
   },
   models: [
     { id: "openai/text-embedding-3-large", name: "OpenAI Text Embedding 3 Large", kind: "embedding" },

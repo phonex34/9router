@@ -316,7 +316,7 @@ export function prepareClaudeRequest(body, provider = null, apiKey = null, conne
   // Apply cloaking for OAuth tokens (billing header + fake user ID)
   // session_id in user_id must match X-Claude-Code-Session-Id for fingerprint consistency
   if ((provider === "claude" || provider?.startsWith("anthropic-compatible")) && apiKey) {
-    const sid = sessionId || resolveSessionId({ headers: rawHeaders, body, connectionId, scope: "claude" });
+    const sid = sessionId || resolveSessionId({ headers: rawHeaders, body, connectionId, apiKey, scope: "claude" });
     body = applyCloaking(body, apiKey, sid);
   }
 
